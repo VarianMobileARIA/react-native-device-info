@@ -1,35 +1,3 @@
-package com.learnium.RNDeviceInfo;
-
-import android.Manifest;
-import android.app.KeyguardManager;
-import android.bluetooth.BluetoothAdapter;
-import android.content.Context;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.content.res.Configuration;
-import android.net.wifi.WifiManager;
-import android.net.wifi.WifiInfo;
-import android.os.Build;
-import android.provider.Settings.Secure;
-import android.webkit.WebSettings;
-import android.telephony.TelephonyManager;
-import android.text.format.Formatter;
-
-import com.facebook.react.bridge.ReactApplicationContext;
-import com.facebook.react.bridge.ReactContextBaseJavaModule;
-import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.Callback;
-import com.facebook.react.bridge.Promise;
-
-import java.util.HashMap;
-import java.util.Locale;
-import java.util.Map;
-import java.util.TimeZone;
-
-import javax.annotation.Nullable;
-
-public class RNDeviceModule extends ReactContextBaseJavaModule {
-
   ReactApplicationContext reactContext;
 
   WifiInfo wifiInfo;
@@ -172,7 +140,7 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
       try {
         constants.put("userAgent", WebSettings.getDefaultUserAgent(this.reactContext));
-      } catch (PackageManager.NameNotFoundException e) {
+      } catch (Exception e) {
         constants.put("userAgent", System.getProperty("http.agent"));
       }
     }
@@ -190,4 +158,3 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     constants.put("carrier", this.getCarrier());
     return constants;
   }
-}
