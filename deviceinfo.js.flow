@@ -1,5 +1,7 @@
 // @flow
 
+export type DeviceType = 'Handset' | 'Tablet' | 'Tv' | 'Unknown';
+
 declare module.exports: {
   getUniqueID: () => string,
   getManufacturer: () => string,
@@ -9,6 +11,7 @@ declare module.exports: {
   getSystemName: () => string,
   getSystemVersion: () => string,
   getBundleId: () => string,
+  getApplicationName: () => string,
   getBuildNumber: () => string,
   getVersion: () => string,
   getReadableVersion: () => string,
@@ -17,17 +20,33 @@ declare module.exports: {
   getDeviceLocale: () => string,
   getDeviceCountry: () => string,
   getTimezone: () => string,
+  getInstanceID: () => string,
+  getInstallReferrer: () => string,
   isEmulator: () => boolean,
   isTablet: () => boolean,
+  getFontScale: () => number,
   is24Hour: () => boolean,
-  isPinOrFingerprintSet: () => (cb: (isPinOrFingerprintSet: boolean) => void) => void,
-  getAPILevel: () => number,
-  getInstanceID: () => string,
-  getPhoneNumber: () => ?string,
+  isPinOrFingerprintSet: () => (
+    cb: (isPinOrFingerprintSet: boolean) => void
+  ) => void,
+  hasNotch: () => boolean,
   getFirstInstallTime: () => number,
   getLastUpdateTime: () => number,
   getSerialNumber: () => string,
+  getAPILevel: () => number,
   getIPAddress: () => Promise<string>,
   getMACAddress: () => Promise<string>,
+  getPhoneNumber: () => ?string,
   getCarrier: () => string,
-}
+  getTotalMemory: () => number,
+  getMaxMemory: () => number,
+  getTotalDiskCapacity: () => number,
+  getFreeDiskStorage: () => number,
+  getBatteryLevel: () => Promise<number>,
+  isBatteryCharging:() => Promise<boolean>,
+  isLandscape: () => boolean,
+  isAirPlaneMode: () => Promise<boolean>,
+  getDeviceType: () => DeviceType,
+  isAutoDateAndTime: () => Promise<boolean>,
+  isAutoTimeZone: () => Promise<boolean>,
+};
