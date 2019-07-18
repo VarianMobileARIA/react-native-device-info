@@ -1,6 +1,7 @@
 package com.learnium.RNDeviceInfo;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.KeyguardManager;
 import android.app.UiModeManager;
 import android.bluetooth.BluetoothAdapter;
@@ -10,9 +11,12 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.FeatureInfo;
 import android.content.res.Configuration;
+import android.location.LocationManager;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiInfo;
+import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Environment;
 import android.os.StatFs;
@@ -22,24 +26,34 @@ import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.telephony.TelephonyManager;
 import android.text.format.Formatter;
+import android.text.TextUtils;
 import android.app.ActivityManager;
 import android.util.DisplayMetrics;
+import android.hardware.Camera;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.CameraAccessException;
 
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.Promise;
+import com.facebook.react.bridge.WritableArray;
+import com.facebook.react.bridge.WritableMap;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
 import java.lang.Runtime;
 import java.net.NetworkInterface;
 import java.math.BigInteger;
+import java.util.concurrent.ExecutionException;
 
 import javax.annotation.Nullable;
 
@@ -51,11 +65,24 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
 
   DeviceType deviceType;
 
-  public RNDeviceModule(ReactApplicationContext reactContext) {
+  Map<String, Object> constants;
+  AsyncTask<Void, Void, Map<String, Object>> futureConstants;
+
+  public RNDeviceModule(ReactApplicationContext reactContext, boolean loadConstantsAsynchronously) {
     super(reactContext);
 
     this.reactContext = reactContext;
     this.deviceType = getDeviceType(reactContext);
+    if (loadConstantsAsynchronously) {
+      this.futureConstants = new AsyncTask<Void, Void, Map<String, Object>>() {
+        @Override
+        protected Map<String, Object> doInBackground(Void... args) {
+          return generateConstants();
+        }
+      }.execute();
+    } else {
+      this.constants = generateConstants();
+    }
   }
 
   @Override
@@ -92,6 +119,20 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     }
   }
 
+  private ArrayList<String> getPreferredLocales() {
+    Configuration configuration = getReactApplicationContext().getResources().getConfiguration();
+    ArrayList<String> preferred = new ArrayList<>();
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+      for (int i = 0; i < configuration.getLocales().size(); i++) {
+        preferred.add(configuration.getLocales().get(i).getLanguage());
+      }
+    } else {
+      preferred.add(configuration.locale.getLanguage());
+    }
+
+    return preferred;
+  }
+
   private String getCurrentCountry() {
     Locale current;
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -104,14 +145,30 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
   }
 
   private Boolean isEmulator() {
+
     return Build.FINGERPRINT.startsWith("generic")
         || Build.FINGERPRINT.startsWith("unknown")
         || Build.MODEL.contains("google_sdk")
+        || Build.MODEL.toLowerCase().contains("droid4x")
         || Build.MODEL.contains("Emulator")
         || Build.MODEL.contains("Android SDK built for x86")
         || Build.MANUFACTURER.contains("Genymotion")
-        || (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic"))
-        || "google_sdk".equals(Build.PRODUCT);
+        || Build.HARDWARE.contains("goldfish")
+        || Build.HARDWARE.contains("ranchu")
+        || Build.HARDWARE.contains("vbox86")
+        || Build.PRODUCT.contains("sdk")
+        || Build.PRODUCT.contains("google_sdk")
+        || Build.PRODUCT.contains("sdk_google")
+        || Build.PRODUCT.contains("sdk_x86")
+        || Build.PRODUCT.contains("vbox86p")
+        || Build.PRODUCT.contains("emulator")
+        || Build.PRODUCT.contains("simulator")
+        || Build.BOARD.toLowerCase().contains("nox")
+        || Build.BOOTLOADER.toLowerCase().contains("nox")
+        || Build.HARDWARE.toLowerCase().contains("nox")
+        || Build.PRODUCT.toLowerCase().contains("nox")
+        || Build.SERIAL.toLowerCase().contains("nox")
+        || (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic"));
   }
 
   private Boolean isTablet() {
@@ -180,6 +237,20 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     String ipAddress = Formatter.formatIpAddress(getWifiInfo().getIpAddress());
     p.resolve(ipAddress);
   }
+ 
+  @ReactMethod
+  public void getCameraPresence(Promise p) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      CameraManager manager=(CameraManager)getReactApplicationContext().getSystemService(Context.CAMERA_SERVICE);
+      try {
+        p.resolve(manager.getCameraIdList().length > 0);
+      } catch (CameraAccessException e) {
+        p.reject(e);
+      }
+    } else {
+      p.resolve(Camera.getNumberOfCameras()> 0);
+    }
+  }
 
   @ReactMethod
   public void getMacAddress(Promise p) {
@@ -239,7 +310,18 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
   public BigInteger getFreeDiskStorage() {
     try {
       StatFs external = new StatFs(Environment.getExternalStorageDirectory().getAbsolutePath());
-      return BigInteger.valueOf(external.getAvailableBlocks()).multiply(BigInteger.valueOf(external.getBlockSize()));
+      long availableBlocks;
+      long blockSize;
+
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR2) {
+        availableBlocks = external.getAvailableBlocks();
+        blockSize = external.getBlockSize();
+      } else {
+        availableBlocks = external.getAvailableBlocksLong();
+        blockSize = external.getBlockSizeLong();
+      }
+
+      return BigInteger.valueOf(availableBlocks).multiply(BigInteger.valueOf(blockSize));
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -297,14 +379,70 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     p.resolve(isAutoTimeZone);
   }
 
+  @ReactMethod
+  public void hasSystemFeature(String feature, Promise p) {
+
+    if (feature == null || feature == "") {
+      p.resolve(false);
+      return;
+    }
+
+    boolean hasFeature = this.reactContext.getApplicationContext().getPackageManager().hasSystemFeature(feature);
+    p.resolve(hasFeature);
+  }
+
+  @ReactMethod
+  public void getSystemAvailableFeatures(Promise p) {
+    final FeatureInfo[] featureList = this.reactContext.getApplicationContext().getPackageManager().getSystemAvailableFeatures();
+    
+    WritableArray promiseArray = Arguments.createArray();
+    for (FeatureInfo f : featureList) {
+      if (f.name != null) {
+        promiseArray.pushString(f.name);
+      }
+    }
+
+    p.resolve(promiseArray);
+  }
+
+  @ReactMethod
+  public void isLocationEnabled(Promise p) {
+      boolean locationEnabled = false;
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        LocationManager mLocationManager = (LocationManager) reactContext.getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
+        locationEnabled = mLocationManager.isLocationEnabled();
+      } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+        int locationMode = Settings.Secure.getInt(reactContext.getContentResolver(), Settings.Secure.LOCATION_MODE, Settings.Secure.LOCATION_MODE_OFF);
+        locationEnabled = locationMode != Settings.Secure.LOCATION_MODE_OFF;
+      } else {
+        String locationProviders = Settings.Secure.getString(reactContext.getContentResolver(), Settings.Secure.LOCATION_PROVIDERS_ALLOWED);
+        locationEnabled = !TextUtils.isEmpty(locationProviders);
+      }
+
+      p.resolve(locationEnabled);
+  }
+
+  @ReactMethod
+  public void getAvailableLocationProviders(Promise p) {
+    LocationManager mLocationManager = (LocationManager) reactContext.getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
+    final List<String> providers = mLocationManager.getProviders(false);
+
+    WritableMap providersAvailability = Arguments.createMap();
+    for (String provider : providers) {
+      providersAvailability.putBoolean(provider, mLocationManager.isProviderEnabled(provider));
+    }
+
+    p.resolve(providersAvailability);
+  }
+
   public String getInstallReferrer() {
     SharedPreferences sharedPref = getReactApplicationContext().getSharedPreferences("react-native-device-info", Context.MODE_PRIVATE);
     return sharedPref.getString("installReferrer", null);
   }
 
-  @Override
-  public @Nullable
-  Map<String, Object> getConstants() {
+  @SuppressLint({"MissingPermission", "HardwareIds"})
+  private Map<String, Object> generateConstants() {
     HashMap<String, Object> constants = new HashMap<String, Object>();
 
     PackageManager packageManager = this.reactContext.getPackageManager();
@@ -357,36 +495,59 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     constants.put("systemVersion", Build.VERSION.RELEASE);
     constants.put("model", Build.MODEL);
     constants.put("brand", Build.BRAND);
+    constants.put("buildId", Build.ID);
     constants.put("deviceId", Build.BOARD);
     constants.put("apiLevel", Build.VERSION.SDK_INT);
+    constants.put("bootloader", Build.BOOTLOADER);
+    constants.put("device", Build.DEVICE);
+    constants.put("display", Build.DISPLAY);
+    constants.put("fingerprint", Build.FINGERPRINT);
+    constants.put("hardware", Build.HARDWARE);
+    constants.put("host", Build.HOST);
+    constants.put("product", Build.PRODUCT);
+    constants.put("tags", Build.TAGS);
+    constants.put("type", Build.TYPE);
+    if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      constants.put("baseOS", Build.VERSION.BASE_OS);
+      constants.put("previewSdkInt", Build.VERSION.PREVIEW_SDK_INT);
+      constants.put("securityPatch", Build.VERSION.SECURITY_PATCH);
+    }
+    constants.put("codename", Build.VERSION.CODENAME);
+    constants.put("incremental", Build.VERSION.INCREMENTAL);
     constants.put("deviceLocale", this.getCurrentLanguage());
+    constants.put("preferredLocales", this.getPreferredLocales());
     constants.put("deviceCountry", this.getCurrentCountry());
     constants.put("uniqueId", Settings.Secure.getString(this.reactContext.getContentResolver(), Settings.Secure.ANDROID_ID));
     constants.put("systemManufacturer", Build.MANUFACTURER);
     constants.put("bundleId", packageName);
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-      try {
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
         constants.put("userAgent", WebSettings.getDefaultUserAgent(this.reactContext));
-      } catch (RuntimeException e) {
+      } else {
         constants.put("userAgent", System.getProperty("http.agent"));
       }
+    } catch (RuntimeException e) {
+      constants.put("userAgent", System.getProperty("http.agent"));
     }
     constants.put("timezone", TimeZone.getDefault().getID());
     constants.put("isEmulator", this.isEmulator());
     constants.put("isTablet", this.isTablet());
     constants.put("fontScale", this.fontScale());
     constants.put("is24Hour", this.is24Hour());
-    if (getCurrentActivity() != null &&
-        (getCurrentActivity().checkCallingOrSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED ||
-            getCurrentActivity().checkCallingOrSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED ||
-            getCurrentActivity().checkCallingOrSelfPermission("android.permission.READ_PHONE_NUMBERS") == PackageManager.PERMISSION_GRANTED)) {
-      TelephonyManager telMgr = (TelephonyManager) this.reactContext.getApplicationContext().getSystemService(Context.TELEPHONY_SERVICE);
-      constants.put("phoneNumber", telMgr.getLine1Number());
-    }
     constants.put("carrier", this.getCarrier());
     constants.put("totalDiskCapacity", this.getTotalDiskCapacity());
     constants.put("freeDiskStorage", this.getFreeDiskStorage());
     constants.put("installReferrer", this.getInstallReferrer());
+
+    if (reactContext != null &&
+         (reactContext.checkCallingOrSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED ||
+           (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && reactContext.checkCallingOrSelfPermission(Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED) ||
+           (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && reactContext.checkCallingOrSelfPermission(Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED))) {
+      TelephonyManager telMgr = (TelephonyManager) this.reactContext.getApplicationContext().getSystemService(Context.TELEPHONY_SERVICE);
+      constants.put("phoneNumber", telMgr.getLine1Number());
+    } else {
+      constants.put("phoneNumber", null);
+    }
 
     Runtime rt = Runtime.getRuntime();
     constants.put("maxMemory", rt.maxMemory());
@@ -395,7 +556,31 @@ public class RNDeviceModule extends ReactContextBaseJavaModule {
     actMgr.getMemoryInfo(memInfo);
     constants.put("totalMemory", memInfo.totalMem);
     constants.put("deviceType", deviceType.getValue());
-
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      constants.put("supportedABIs", Build.SUPPORTED_ABIS);
+      constants.put("supported32BitAbis", Arrays.asList(Build.SUPPORTED_32_BIT_ABIS));
+      constants.put("supported64BitAbis", Arrays.asList(Build.SUPPORTED_64_BIT_ABIS));
+    } else {
+      constants.put("supportedABIs", new String[]{ Build.CPU_ABI });
+      constants.put("supported32BitAbis", Arrays.asList(new String[] {}));
+      constants.put("supported64BitAbis", Arrays.asList(new String[] {}));
+    }
     return constants;
+  }
+
+  @Override
+  public @Nullable
+  Map<String, Object> getConstants() {
+    if (this.constants == null && this.futureConstants != null) {
+      try {
+        this.constants = this.futureConstants.get();
+      } catch (InterruptedException e) {
+        return null;
+      } catch (ExecutionException e) {
+        throw new RuntimeException(e.getCause());
+      }
+    }
+
+    return this.constants;
   }
 }

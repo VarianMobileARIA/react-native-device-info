@@ -8,7 +8,7 @@
  */
 
 import React, {Component} from 'react';
-import {Platform, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {Platform, ScrollView, StyleSheet, Text, View, SafeAreaView} from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 
 const instructions = Platform.select({
@@ -28,7 +28,7 @@ export default class App extends Component<Props> {
     };
   }
 
-  async componentWillMount() {
+  async componentDidMount() {
     let deviceJSON = {};
     const ios = Platform.OS === 'ios';
 
@@ -41,13 +41,16 @@ export default class App extends Component<Props> {
       deviceJSON.deviceId = DeviceInfo.getDeviceId();
       deviceJSON.systemName = DeviceInfo.getSystemName();
       deviceJSON.systemVersion = DeviceInfo.getSystemVersion();
+      deviceJSON.buildId = DeviceInfo.getBuildId();
       deviceJSON.bundleId = DeviceInfo.getBundleId();
+      deviceJSON.isCameraPresent = ios ? -1 : await DeviceInfo.getCameraPresence();
       deviceJSON.buildNumber = DeviceInfo.getBuildNumber();
       deviceJSON.version = DeviceInfo.getVersion();
       deviceJSON.readableVersion = DeviceInfo.getReadableVersion();
       deviceJSON.deviceName = DeviceInfo.getDeviceName(); // needs android.permission.BLUETOOTH ?
       deviceJSON.userAgent = DeviceInfo.getUserAgent();
       deviceJSON.deviceLocale = DeviceInfo.getDeviceLocale();
+      deviceJSON.preferredLocales = DeviceInfo.getPreferredLocales();
       deviceJSON.deviceCountry = DeviceInfo.getDeviceCountry();
       deviceJSON.timezone = DeviceInfo.getTimezone();
       deviceJSON.instanceID = ios ? '' : DeviceInfo.getInstanceID();
@@ -74,6 +77,28 @@ export default class App extends Component<Props> {
       deviceJSON.isBatteryCharging = ios ? false : await DeviceInfo.isBatteryCharging();
       deviceJSON.deviceType = DeviceInfo.getDeviceType();
       deviceJSON.isPinOrFingerprintSet = 'unknown';
+      deviceJSON.supportedABIs = DeviceInfo.supportedABIs();
+      deviceJSON.hasSystemFeature = ios ? false : await DeviceInfo.hasSystemFeature('amazon.hardware.fire_tv');
+      deviceJSON.getSystemAvailableFeatures = ios ? [] : await DeviceInfo.getSystemAvailableFeatures();
+      deviceJSON.powerState = ios ? await DeviceInfo.getPowerState() : '';
+      deviceJSON.isLocationEnabled = await DeviceInfo.isLocationEnabled();
+      deviceJSON.getAvailableLocationProviders = await DeviceInfo.getAvailableLocationProviders();
+      deviceJSON.bootloader = ios ? '' : DeviceInfo.getBootloader();
+      deviceJSON.device = ios ? '' : DeviceInfo.getDevice();
+      deviceJSON.display = ios ? '' : DeviceInfo.getDisplay();
+      deviceJSON.fingerprint = ios ? '' : DeviceInfo.getFingerprint();
+      deviceJSON.hardware = ios ? '' : DeviceInfo.getHardware();
+      deviceJSON.host = ios ? '' : DeviceInfo.getHost();
+      deviceJSON.product = ios ? '' : DeviceInfo.getProduct();
+      deviceJSON.tags = ios ? '' : DeviceInfo.getTags();
+      deviceJSON.type = ios ? '' : DeviceInfo.getType();
+      deviceJSON.baseOS = ios ? '' : DeviceInfo.getBaseOS();
+      deviceJSON.previewSdkInt = ios ? -1 : DeviceInfo.getPreviewSdkInt();
+      deviceJSON.securityPatch = ios ? '' : DeviceInfo.getSecurityPatch();
+      deviceJSON.codename = ios ? '' : DeviceInfo.getCodename();
+      deviceJSON.incremental = ios ? '' : DeviceInfo.getIncremental();
+      deviceJSON.supported32BitAbis = ios ? [] : DeviceInfo.supported32BitAbis();
+      deviceJSON.supported64BitAbis = ios ? [] : DeviceInfo.supported64BitAbis();
     } catch (e) {
       console.log('Trouble getting device info ', e);
     }
@@ -96,12 +121,12 @@ export default class App extends Component<Props> {
 
   render() {
     return (
-      <View style={styles.container}>
+      <SafeAreaView style={styles.container}>
         <Text style={styles.welcome}>react-native-device-info example - info:</Text>
         <ScrollView>
           <Text style={styles.instructions}>{JSON.stringify(this.state.deviceinfo, null, '\t')}</Text>
         </ScrollView>
-      </View>
+      </SafeAreaView>
     );
   }
 }

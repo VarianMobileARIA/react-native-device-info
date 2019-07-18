@@ -8,9 +8,13 @@
 
 #import <UIKit/UIKit.h>
 #import <sys/utsname.h>
-
 #import <React/RCTBridgeModule.h>
+#import <React/RCTEventEmitter.h>
+#import <React/RCTLog.h>
 
-@interface RNDeviceInfo : NSObject <RCTBridgeModule>
+@interface RNDeviceInfo : RCTEventEmitter <RCTBridgeModule>
+
+@property (nonatomic) bool isEmulator;
+@property (nonatomic) float lowBatteryThreshold;
 
 @end
